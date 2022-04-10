@@ -1,5 +1,6 @@
 # limit the number of cpus used by high performance libraries
 import os
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -7,6 +8,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 import sys
+
 sys.path.insert(0, './yolov5')
 
 import argparse
@@ -40,7 +42,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, \
-        project, exist_ok, update, save_crop = \
+    project, exist_ok, update, save_crop = \
         opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, \
         opt.save_txt, opt.imgsz, opt.evaluate, opt.half, opt.project, opt.exist_ok, opt.update, opt.save_crop
     webcam = source == '0' or source.startswith(
@@ -81,13 +83,13 @@ def detect(opt):
 
     # Set Dataloader
     vid_path, vid_writer = None, None
+
     # Check if environment supports image displays
     if show_vid:
         show_vid = check_imshow()
 
     # Dataloader
     if webcam:
-        show_vid = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
         nr_sources = len(dataset)
@@ -137,7 +139,8 @@ def detect(opt):
         dt[1] += t3 - t2
 
         # Apply NMS
-        pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, opt.classes, opt.agnostic_nms, max_det=opt.max_det)
+        pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, opt.classes, opt.agnostic_nms,
+                                   max_det=opt.max_det)
         dt[2] += time_sync() - t3
 
         # Process detections
@@ -211,7 +214,8 @@ def detect(opt):
                             annotator.box_label(bboxes, label, color=colors(c, True))
                             if save_crop:
                                 txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
-                                save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                                save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[
+                                    c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
 
                 LOGGER.info(f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)')
 
