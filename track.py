@@ -11,6 +11,7 @@ import sys
 
 sys.path.insert(0, './yolov5')
 
+import requests
 import argparse
 import os
 import platform
@@ -42,16 +43,16 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, \
-    project, exist_ok, update, save_crop = \
-        opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, \
-        opt.save_txt, opt.imgsz, opt.evaluate, opt.half, opt.project, opt.exist_ok, opt.update, opt.save_crop
+    project, exist_ok, update, save_crop, send_result = \
+        opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, opt.save_txt, \
+        opt.imgsz, opt.evaluate, opt.half, opt.project, opt.exist_ok, opt.update, opt.save_crop, opt.send_result
     webcam = source == '0' or source.startswith(
         'rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # Initialize
     device = select_device(opt.device)
     half &= device.type != 'cpu'  # half precision only supported on CUDA
-
+    hostname = os.system('hostname')
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
     if not evaluate:
@@ -143,6 +144,7 @@ def detect(opt):
                                    max_det=opt.max_det)
         dt[2] += time_sync() - t3
 
+        result = []
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             seen += 1
@@ -216,6 +218,11 @@ def detect(opt):
                                 txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
                                 save_one_box(bboxes, imc, file=save_dir / 'crops' / txt_file_name / names[
                                     c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                        if send_result:
+                            result.append({'obj_id': int(id),
+                                           'name': names[int(cls)],
+                                           'conf': float(conf),
+                                           'xyxy': list(map(int, bboxes))})
 
                 LOGGER.info(f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)')
 
@@ -244,6 +251,14 @@ def detect(opt):
                     save_path = str(Path(save_path).with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                     vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                 vid_writer[i].write(im0)
+
+            if send_result:
+                data = {'container_id': hostname,
+                        'frame_id': int(frame_idx),
+                        'time_spent': 1.1,
+                        'detections': result}
+                r = requests.post(send_result, json=data)
+                print(r.text)
 
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
@@ -285,6 +300,7 @@ if __name__ == '__main__':
     parser.add_argument('--project', default=ROOT / 'runs/track', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
+    parser.add_argument('--send-result', default='', help='send result to this url')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
 
