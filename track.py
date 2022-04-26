@@ -1,6 +1,7 @@
 # limit the number of cpus used by high performance libraries
 import os
 import base64
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -35,9 +36,11 @@ from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
 from datetime import datetime
 
+
 class Timer:
     def __init__(self):
         self.t = None
+
     def __call__(self):
         t = datetime.now()
         if self.t:
@@ -55,6 +58,7 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 timer = Timer()
 
+
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, \
     project, exist_ok, update, save_crop, send_result = \
@@ -65,8 +69,8 @@ def detect(opt):
 
     # Initialize
     device = select_device(opt.device)
-    half &= device.type != 'cpu'  # half precision only supported on CUDA
-    hostname = os.system('hostname')
+    half &= device.type != 'cpu'  #half precision only supported on CUDA
+    hostname = os.popen('hostname').read()
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
     if not evaluate:
@@ -272,9 +276,9 @@ def detect(opt):
                         'time_spent': timer(),
                         'detections': result}
                 jpg_as_text = base64.b64encode(encodedImage)
-                r = requests.post(send_result+'/stream', data=jpg_as_text, headers={'accept': 'application/json'})
+                r = requests.post(send_result + '/stream', data=jpg_as_text, headers={'accept': 'application/json'})
                 print(r.text)
-                r = requests.post(send_result+'/log', json=data)
+                r = requests.post(send_result + '/log', json=data)
                 print(r.text)
 
     # Print results
