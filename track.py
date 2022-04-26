@@ -1,6 +1,6 @@
 # limit the number of cpus used by high performance libraries
 import os
-
+import base64
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -33,13 +33,27 @@ from yolov5.utils.torch_utils import select_device, time_sync
 from yolov5.utils.plots import Annotator, colors, save_one_box
 from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
+from datetime import datetime
+
+class Timer:
+    def __init__(self):
+        self.t = None
+    def __call__(self):
+        t = datetime.now()
+        if self.t:
+            delta = (t - self.t).microseconds
+        else:
+            delta = 0
+        self.t = t
+        return delta
+
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 deepsort root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-
+timer = Timer()
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, \
@@ -209,8 +223,7 @@ def detect(opt):
                             with open(txt_path + '.txt', 'a') as f:
                                 f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
                                                                bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
-
-                        if save_vid or save_crop or show_vid:  # Add bbox to image
+                        if send_result or save_vid or save_crop or show_vid:  # Add bbox to image
                             c = int(cls)  # integer class
                             label = f'{id} {names[c]} {conf:.2f}'
                             annotator.box_label(bboxes, label, color=colors(c, True))
@@ -253,11 +266,15 @@ def detect(opt):
                 vid_writer[i].write(im0)
 
             if send_result:
+                (flag, encodedImage) = cv2.imencode(".jpg", im0)
                 data = {'container_id': hostname,
                         'frame_id': int(frame_idx),
-                        'time_spent': 1.1,
+                        'time_spent': timer(),
                         'detections': result}
-                r = requests.post(send_result, json=data)
+                jpg_as_text = base64.b64encode(encodedImage)
+                r = requests.post(send_result+'/stream', data=jpg_as_text, headers={'accept': 'application/json'})
+                print(r.text)
+                r = requests.post(send_result+'/log', json=data)
                 print(r.text)
 
     # Print results
