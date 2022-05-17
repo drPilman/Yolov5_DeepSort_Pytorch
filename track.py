@@ -1,6 +1,7 @@
 # limit the number of cpus used by high performance libraries
 import os
 import base64
+import json
 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -271,9 +272,9 @@ def detect(opt):
                                              f'{id}' / f'{p.stem}.jpg',
                                              BGR=True)
                         if redis_id:
-                            result.append(','.join(
-                                (str(id), str(names[int(cls)]), str(conf),
-                                 *(map(str, bboxes)))))
+                            result.append(
+                                (int(id), names[int(cls)], float(conf),
+                                 list(map(float, bboxes))))
 
                 LOGGER.info(
                     f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)'
@@ -312,8 +313,13 @@ def detect(opt):
             if redis_id:
                 (flag, encodedImage) = cv2.imencode(".jpg", im0)
                 jpg_as_text = base64.b64encode(encodedImage)
-                redis.hset(f'tracker{redis_id}', frame_idx, "|".join(result))
-                redis.hset(f'tracker{redis_id}', 'jpg', jpg_as_text)
+                redis.hset(redis_id, frame_idx,
+                           json.dumps({
+                               'frame': frame_idx,
+                               'data': result
+                           }))
+                redis.hset('jpg', redis_id, jpg_as_text)
+                redis.publish(redis_id, frame_idx)
 
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
