@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, './yolov5')
 
+import signal
 import requests
 import argparse
 import os
@@ -39,38 +40,29 @@ from deep_sort.deep_sort import DeepSort
 from datetime import datetime
 import redis as Redis
 
-
-class Timer:
-
-    def __init__(self):
-        self.t = None
-
-    def __call__(self):
-        t = datetime.now()
-        if self.t:
-            delta = (t - self.t).microseconds
-        else:
-            delta = 0
-        self.t = t
-        return delta
-
-
 redis = Redis.Redis(host='localhost', port=6379, db=0)
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 deepsort root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-timer = Timer()
 
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, \
-    project, exist_ok, update, save_crop, redis_id = \
+    project, exist_ok, update, save_crop, redis_id , exp_name = \
         opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, opt.save_txt, \
-        opt.imgsz, opt.evaluate, opt.half, opt.project, opt.exist_ok, opt.update, opt.save_crop, opt.redis_id
+        opt.imgsz, opt.evaluate, opt.half, opt.project, opt.exist_ok, opt.update, opt.save_crop, opt.redis_id, opt.name
     webcam = source == '0' or source.startswith('rtsp') or source.startswith(
         'http') or source.endswith('.txt')
+
+    def handler(signum, frame):
+        print('handler!!!!!!!!')
+        nonlocal vid_writer, i
+        vid_writer[i].release()
+        fp = open('/mount/ok', 'x')
+        fp.close()
+        exit(signum)
 
     # Initialize
     device = select_device(opt.device)
@@ -85,14 +77,16 @@ def detect(opt):
         os.makedirs(out)  # make new output folder
 
     # Directories
-    if type(yolo_model) is str:  # single yolo model
-        exp_name = yolo_model.split(".")[0]
-    elif type(yolo_model) is list and len(
-            yolo_model) == 1:  # single models after --yolo_model
-        exp_name = yolo_model[0].split(".")[0]
-    else:  # multiple models after --yolo_model
-        exp_name = "ensemble"
-    exp_name = exp_name + "_" + deep_sort_model.split('/')[-1].split('.')[0]
+    if exp_name == '':
+        if type(yolo_model) is str:  # single yolo model
+            exp_name = yolo_model.split(".")[0]
+        elif type(yolo_model) is list and len(
+                yolo_model) == 1:  # single models after --yolo_model
+            exp_name = yolo_model[0].split(".")[0]
+        else:  # multiple models after --yolo_model
+            exp_name = "ensemble"
+        exp_name = exp_name + "_" + deep_sort_model.split('/')[-1].split(
+            '.')[0]
     save_dir = increment_path(
         Path(project) / exp_name,
         exist_ok=exist_ok)  # increment run if project name exists
@@ -154,6 +148,8 @@ def detect(opt):
     model.warmup(imgsz=(1 if pt else nr_sources, 3, *imgsz))  # warmup
     dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     for frame_idx, (path, im, im0s, vid_cap, s) in enumerate(dataset):
+        if frame_idx == 1:
+            signal.signal(signal.SIGTERM, handler)
         t1 = time_sync()
         im = torch.from_numpy(im).to(device)
         im = im.half() if half else im.float()  # uint8 to fp16/32
@@ -327,6 +323,8 @@ def detect(opt):
         f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms deep sort update \
         per image at shape {(1, 3, *imgsz)}' % t)
     if save_txt or save_vid:
+        fp = open('/mount/ok', 'x')
+        fp.close()
         s = f"\n{len(list(save_dir.glob('tracks/*.txt')))} tracks saved to {save_dir / 'tracks'}" if save_txt else ''
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
     if update:
@@ -421,7 +419,7 @@ if __name__ == '__main__':
                         default=ROOT / 'runs/track',
                         help='save results to project/name')
     parser.add_argument('--name',
-                        default='exp',
+                        default='',
                         help='save results to project/name')
     parser.add_argument('--exist-ok',
                         action='store_true',
